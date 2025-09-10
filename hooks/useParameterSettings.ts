@@ -65,37 +65,23 @@ export const useParameterSettings = () => {
   const setAllRecords = useCallback(
     async (newRecords: Omit<ParameterSetting, "id">[]) => {
       try {
-        // First, get all existing records to delete them properly
+        // Use upsert approach to avoid race condition
+        // First, get all existing records to compare
         const { data: existingRecords, error: fetchError } = await supabase
           .from("parameter_settings")
-          .select("id");
+          .select("*");
 
         if (fetchError) {
           console.error(
             "Error fetching existing parameter settings:",
             fetchError
           );
-          return;
+          throw new Error("Failed to fetch existing records");
         }
 
-        // Delete all existing records if any exist
-        if (existingRecords && existingRecords.length > 0) {
-          const { error: deleteError } = await supabase
-            .from("parameter_settings")
-            .delete()
-            .in(
-              "id",
-              existingRecords.map((r) => r.id)
-            );
-
-          if (deleteError) {
-            console.error("Error clearing parameter settings:", deleteError);
-            return;
-          }
-        }
-
-        // Insert new records
+        // Only proceed if we have new records to insert
         if (newRecords.length > 0) {
+          // Insert new records first
           const { error: insertError } = await supabase
             .from("parameter_settings")
             .insert(newRecords as any[]);
@@ -105,7 +91,39 @@ export const useParameterSettings = () => {
               "Error bulk inserting parameter settings:",
               insertError
             );
-            return;
+            throw new Error("Failed to insert new records");
+          }
+
+          // Only delete old records after successful insert
+          if (existingRecords && existingRecords.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("parameter_settings")
+              .delete()
+              .in(
+                "id",
+                existingRecords.map((r) => r.id)
+              );
+
+            if (deleteError) {
+              console.error("Error clearing old parameter settings:", deleteError);
+              // Don't throw here as new data is already saved
+            }
+          }
+        } else {
+          // If no new records, just clear existing ones
+          if (existingRecords && existingRecords.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("parameter_settings")
+              .delete()
+              .in(
+                "id",
+                existingRecords.map((r) => r.id)
+              );
+
+            if (deleteError) {
+              console.error("Error clearing parameter settings:", deleteError);
+              throw new Error("Failed to clear existing records");
+            }
           }
         }
 
@@ -113,6 +131,9 @@ export const useParameterSettings = () => {
         fetchRecords();
       } catch (error) {
         console.error("Error in setAllRecords:", error);
+        // Re-fetch to ensure UI is in sync with database
+        fetchRecords();
+        throw error;
       }
     },
     [fetchRecords]

@@ -471,15 +471,30 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
 
   const handleDeleteConfirm = useCallback(() => {
     if (deletingRecord) {
-      if (deletingRecord.type === "plantUnit")
+      if (deletingRecord.type === "plantUnit") {
         deletePlantUnit(deletingRecord.id);
-      if (deletingRecord.type === "parameterSetting")
+      } else if (deletingRecord.type === "parameterSetting") {
+        // Check for references before deleting parameter
+        const isReferencedByCop = copParameterIds.includes(deletingRecord.id);
+        const isReferencedByReport = reportSettings.some(rs => rs.parameter_id === deletingRecord.id);
+        
+        if (isReferencedByCop || isReferencedByReport) {
+          let referencedBy = [];
+          if (isReferencedByCop) referencedBy.push("COP Parameters");
+          if (isReferencedByReport) referencedBy.push("Report Settings");
+          
+          alert(`Cannot delete parameter: it is referenced by ${referencedBy.join(" and ")}. Please remove references first.`);
+          handleCloseModals();
+          return;
+        }
         deleteParameter(deletingRecord.id);
-      if (deletingRecord.type === "siloCapacity") deleteSilo(deletingRecord.id);
-      if (deletingRecord.type === "reportSetting")
+      } else if (deletingRecord.type === "siloCapacity") {
+        deleteSilo(deletingRecord.id);
+      } else if (deletingRecord.type === "reportSetting") {
         deleteReportSetting(deletingRecord.id);
-      if (deletingRecord.type === "picSetting")
+      } else if (deletingRecord.type === "picSetting") {
         deletePicSetting(deletingRecord.id);
+      }
     }
     handleCloseModals();
   }, [
@@ -489,6 +504,8 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
     deleteSilo,
     deleteReportSetting,
     deletePicSetting,
+    copParameterIds,
+    reportSettings,
   ]);
 
   const handleSave = (type: ModalType, record: any) => {
@@ -619,7 +636,7 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
 
     setIsImporting(true);
     const reader = new FileReader();
-    reader.onload = (e) => {
+    reader.onload = async (e) => {
       try {
         const data = e.target?.result;
         if (!data) {
@@ -644,8 +661,13 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
             .filter((d) => d.unit && d.category);
 
           if (newPlantUnits.length > 0) {
-            setAllPlantUnits(newPlantUnits);
-            importedCount++;
+            try {
+              await setAllPlantUnits(newPlantUnits);
+              importedCount++;
+            } catch (error) {
+              console.error("Failed to import Plant Units:", error);
+              alert("Failed to import Plant Units. Please try again.");
+            }
           }
         }
 
@@ -658,8 +680,13 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
             .filter((d) => d.pic);
 
           if (newPics.length > 0) {
-            setAllPicSettings(newPics);
-            importedCount++;
+            try {
+              await setAllPicSettings(newPics);
+              importedCount++;
+            } catch (error) {
+              console.error("Failed to import PIC Settings:", error);
+              alert("Failed to import PIC Settings. Please try again.");
+            }
           }
         }
 
@@ -678,8 +705,13 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
             .filter((d) => d.silo_name && d.capacity > 0);
 
           if (newSilos.length > 0) {
-            setAllSiloCapacities(newSilos);
-            importedCount++;
+            try {
+              await setAllSiloCapacities(newSilos);
+              importedCount++;
+            } catch (error) {
+              console.error("Failed to import Silo Capacities:", error);
+              alert("Failed to import Silo Capacities. Please try again.");
+            }
           }
         }
 
@@ -711,23 +743,23 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
                 "Number"; // Default to Number
 
               // Normalize data type to match enum
-              let normalizedDataType = "Number";
+              let normalizedDataType = ParameterDataType.NUMBER;
               const lowerDataType = dataType.toLowerCase();
               if (
                 lowerDataType.includes("number") ||
                 lowerDataType.includes("num") ||
                 lowerDataType.includes("numeric")
               ) {
-                normalizedDataType = "Number";
+                normalizedDataType = ParameterDataType.NUMBER;
               } else if (
                 lowerDataType.includes("text") ||
                 lowerDataType.includes("string") ||
                 lowerDataType.includes("str")
               ) {
-                normalizedDataType = "Text";
+                normalizedDataType = ParameterDataType.TEXT;
               } else {
                 // Default to Number if unrecognized
-                normalizedDataType = "Number";
+                normalizedDataType = ParameterDataType.NUMBER;
               }
 
               const unit =
@@ -751,13 +783,19 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
                   row.min_value !== undefined &&
                   row.min_value !== null &&
                   row.min_value !== ""
-                    ? parseFloat(row.min_value)
+                    ? (() => {
+                        const parsed = parseFloat(row.min_value);
+                        return isNaN(parsed) ? undefined : parsed;
+                      })()
                     : undefined,
                 max_value:
                   row.max_value !== undefined &&
                   row.max_value !== null &&
                   row.max_value !== ""
-                    ? parseFloat(row.max_value)
+                    ? (() => {
+                        const parsed = parseFloat(row.max_value);
+                        return isNaN(parsed) ? undefined : parsed;
+                      })()
                     : undefined,
               };
 
@@ -788,17 +826,22 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
             console.log(
               `Attempting to import ${newRawParams.length} parameter settings...`
             );
-            setAllParameterSettings(newRawParams as any);
-            parameterImportCount = newRawParams.length; // Store count
-            // Regenerate with IDs for dependency mapping
-            newParams = newRawParams.map(
-              (p, i) =>
-                ({
-                  ...p,
-                  id: `imported_${Date.now()}_${i}`,
-                } as ParameterSetting)
-            );
-            importedCount++;
+            try {
+              await setAllParameterSettings(newRawParams as any);
+              parameterImportCount = newRawParams.length; // Store count
+              // Regenerate with IDs for dependency mapping
+              newParams = newRawParams.map(
+                (p, i) =>
+                  ({
+                    ...p,
+                    id: `imported_${Date.now()}_${i}`,
+                  } as ParameterSetting)
+              );
+              importedCount++;
+            } catch (error) {
+              console.error("Failed to import Parameter Settings:", error);
+              alert("Failed to import Parameter Settings. Please try again.");
+            }
           } else {
             console.log(
               "No valid parameter settings found to import - check data format"
@@ -854,8 +897,13 @@ const PlantOperationsMasterData: React.FC<{ t: any }> = ({ t }) => {
             );
 
           if (newReportSettings.length > 0) {
-            setAllReportSettings(newReportSettings);
-            importedCount++;
+            try {
+              await setAllReportSettings(newReportSettings);
+              importedCount++;
+            } catch (error) {
+              console.error("Failed to import Report Settings:", error);
+              alert("Failed to import Report Settings. Please try again.");
+            }
           }
         }
 

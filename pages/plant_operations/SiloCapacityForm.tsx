@@ -71,6 +71,24 @@ const SiloCapacityForm: React.FC<FormProps> = ({ recordToEdit, onSave, onCancel,
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation: capacity must be greater than dead_stock
+    if (formData.capacity <= formData.dead_stock) {
+      alert("Capacity must be greater than dead stock");
+      return;
+    }
+    
+    // Validation: both values must be positive
+    if (formData.capacity <= 0) {
+      alert("Capacity must be greater than 0");
+      return;
+    }
+    
+    if (formData.dead_stock < 0) {
+      alert("Dead stock cannot be negative");
+      return;
+    }
+    
     if (recordToEdit) {
       onSave({ ...recordToEdit, ...formData });
     } else {

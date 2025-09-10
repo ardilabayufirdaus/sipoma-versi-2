@@ -46,14 +46,57 @@ export const useReportSettings = () => {
   }, [fetchRecords]);
   
   const setAllRecords = useCallback(async (newRecords: Omit<ReportSetting, 'id'>[]) => {
-    const { error: deleteError } = await supabase.from('report_settings').delete().neq('id', '0');
-    if (deleteError) {
-      console.error('Error clearing report settings:', deleteError);
-      return;
+    try {
+      // Use upsert approach to avoid race condition
+      const { data: existingRecords, error: fetchError } = await supabase
+        .from('report_settings')
+        .select('*');
+
+      if (fetchError) {
+        console.error('Error fetching existing report settings:', fetchError);
+        throw new Error('Failed to fetch existing records');
+      }
+
+      if (newRecords.length > 0) {
+        const { error: insertError } = await supabase
+          .from('report_settings')
+          .insert(newRecords);
+
+        if (insertError) {
+          console.error('Error bulk inserting report settings:', insertError);
+          throw new Error('Failed to insert new records');
+        }
+
+        if (existingRecords && existingRecords.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('report_settings')
+            .delete()
+            .in('id', existingRecords.map((r) => r.id));
+
+          if (deleteError) {
+            console.error('Error clearing old report settings:', deleteError);
+          }
+        }
+      } else {
+        if (existingRecords && existingRecords.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('report_settings')
+            .delete()
+            .in('id', existingRecords.map((r) => r.id));
+
+          if (deleteError) {
+            console.error('Error clearing report settings:', deleteError);
+            throw new Error('Failed to clear existing records');
+          }
+        }
+      }
+
+      fetchRecords();
+    } catch (error) {
+      console.error('Error in setAllRecords:', error);
+      fetchRecords();
+      throw error;
     }
-    const { error: insertError } = await supabase.from('report_settings').insert(newRecords);
-    if (insertError) console.error('Error bulk inserting report settings:', insertError);
-    else fetchRecords();
   }, [fetchRecords]);
 
   return { records, loading, addRecord, updateRecord, deleteRecord, setAllRecords };

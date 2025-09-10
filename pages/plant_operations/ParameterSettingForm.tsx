@@ -63,6 +63,17 @@ const ParameterSettingForm: React.FC<FormProps> = ({
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validation for Number type parameters
+    if (formData.data_type === ParameterDataType.NUMBER) {
+      if (formData.min_value !== undefined && formData.max_value !== undefined) {
+        if (formData.min_value >= formData.max_value) {
+          alert("Minimum value must be less than maximum value");
+          return;
+        }
+      }
+    }
+    
     if (recordToEdit) {
       onSave({ ...recordToEdit, ...formData });
     } else {

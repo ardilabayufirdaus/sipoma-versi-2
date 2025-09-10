@@ -47,14 +47,57 @@ export const usePicSettings = () => {
   }, [fetchRecords]);
   
   const setAllRecords = useCallback(async (newRecords: Omit<PicSetting, 'id'>[]) => {
-    const { error: deleteError } = await supabase.from('pic_settings').delete().neq('id', '0');
-    if (deleteError) {
-      console.error('Error clearing PIC settings:', deleteError);
-      return;
+    try {
+      // Use upsert approach to avoid race condition
+      const { data: existingRecords, error: fetchError } = await supabase
+        .from('pic_settings')
+        .select('*');
+
+      if (fetchError) {
+        console.error('Error fetching existing PIC settings:', fetchError);
+        throw new Error('Failed to fetch existing records');
+      }
+
+      if (newRecords.length > 0) {
+        const { error: insertError } = await supabase
+          .from('pic_settings')
+          .insert(newRecords);
+
+        if (insertError) {
+          console.error('Error bulk inserting PIC settings:', insertError);
+          throw new Error('Failed to insert new records');
+        }
+
+        if (existingRecords && existingRecords.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('pic_settings')
+            .delete()
+            .in('id', existingRecords.map((r) => r.id));
+
+          if (deleteError) {
+            console.error('Error clearing old PIC settings:', deleteError);
+          }
+        }
+      } else {
+        if (existingRecords && existingRecords.length > 0) {
+          const { error: deleteError } = await supabase
+            .from('pic_settings')
+            .delete()
+            .in('id', existingRecords.map((r) => r.id));
+
+          if (deleteError) {
+            console.error('Error clearing PIC settings:', deleteError);
+            throw new Error('Failed to clear existing records');
+          }
+        }
+      }
+
+      fetchRecords();
+    } catch (error) {
+      console.error('Error in setAllRecords:', error);
+      fetchRecords();
+      throw error;
     }
-    const { error: insertError } = await supabase.from('pic_settings').insert(newRecords);
-    if (insertError) console.error('Error bulk inserting PIC settings:', insertError);
-    else fetchRecords();
   }, [fetchRecords]);
 
   return { records, loading, addRecord, updateRecord, deleteRecord, setAllRecords };
