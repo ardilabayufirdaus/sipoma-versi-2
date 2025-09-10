@@ -64,41 +64,59 @@ export const usePlantUnits = () => {
   const setAllRecords = useCallback(
     async (newRecords: Omit<PlantUnit, "id">[]) => {
       try {
-        // First, get all existing records to delete them properly
+        // Use upsert approach to avoid race condition
+        // First, get all existing records to compare
         const { data: existingRecords, error: fetchError } = await supabase
           .from("plant_units")
-          .select("id");
+          .select("*");
 
         if (fetchError) {
           console.error("Error fetching existing plant units:", fetchError);
-          return;
+          throw new Error("Failed to fetch existing records");
         }
 
-        // Delete all existing records if any exist
-        if (existingRecords && existingRecords.length > 0) {
-          const { error: deleteError } = await supabase
-            .from("plant_units")
-            .delete()
-            .in(
-              "id",
-              existingRecords.map((r) => r.id)
-            );
-
-          if (deleteError) {
-            console.error("Error clearing plant units:", deleteError);
-            return;
-          }
-        }
-
-        // Insert new records
+        // Only proceed if we have new records to insert
         if (newRecords.length > 0) {
+          // Insert new records first
           const { error: insertError } = await supabase
             .from("plant_units")
             .insert(newRecords);
 
           if (insertError) {
             console.error("Error bulk inserting plant units:", insertError);
-            return;
+            throw new Error("Failed to insert new records");
+          }
+
+          // Only delete old records after successful insert
+          if (existingRecords && existingRecords.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("plant_units")
+              .delete()
+              .in(
+                "id",
+                existingRecords.map((r) => r.id)
+              );
+
+            if (deleteError) {
+              console.error("Error clearing old plant units:", deleteError);
+              // Don't throw here as new data is already saved
+            }
+          }
+        } else {
+          // If no new records, just clear existing ones
+          if (existingRecords && existingRecords.length > 0) {
+            const { error: deleteError } = await supabase
+              .from("plant_units")
+              .delete()
+              .in(
+                "id",
+                existingRecords.map((r) => r.id)
+              );
+
+            if (deleteError) {
+              console.error("Error clearing plant units:", deleteError);
+              throw new Error("Failed to clear existing records");
+            }
           }
         }
 
@@ -106,6 +124,9 @@ export const usePlantUnits = () => {
         fetchRecords();
       } catch (error) {
         console.error("Error in setAllRecords:", error);
+        // Re-fetch to ensure UI is in sync with database
+        fetchRecords();
+        throw error;
       }
     },
     [fetchRecords]
