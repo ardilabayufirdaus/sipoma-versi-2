@@ -2509,7 +2509,6 @@ const CcrDataEntryPage: React.FC<{ t: any }> = ({ t }) => {
                             value = String(hourData);
                           }
 
-                          const isCurrentlySaving = savingParameterId === param.id;
                           const isProductTypeParameter = param.parameter
                             .toLowerCase()
                             .includes('tipe produk');
@@ -2532,17 +2531,31 @@ const CcrDataEntryPage: React.FC<{ t: any }> = ({ t }) => {
                                     }}
                                     value={value}
                                     onChange={(e) => {
+                                      // Update local state immediately for responsive UI
+                                      setDailyParameterData((prev) => {
+                                        const idx = prev.findIndex((p) => p.parameter_id === param.id);
+                                        if (idx === -1) return prev;
+                                        const paramData = prev[idx];
+                                        const newHourlyValues = { ...paramData.hourly_values };
+                                        if (e.target.value === '' || e.target.value === null) {
+                                          delete newHourlyValues[hour];
+                                        } else {
+                                          newHourlyValues[hour] = e.target.value;
+                                        }
+                                        const updatedParam = { ...paramData, hourly_values: newHourlyValues };
+                                        const newArr = [...prev];
+                                        newArr[idx] = updatedParam;
+                                        return newArr;
+                                      });
+                                    }}
+                                    onBlur={(e) => {
+                                      // Save on blur
                                       handleParameterDataChange(param.id, hour, e.target.value);
                                     }}
                                     onKeyDown={(e) =>
                                       handleKeyDown(e, 'parameter', hour - 1, paramIndex)
                                     }
-                                    disabled={isCurrentlySaving}
-                                    className={`w-full text-center text-sm px-2 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-red-400 focus:border-red-400 bg-white hover:bg-slate-50 text-slate-800 transition-all duration-200 ${
-                                      isCurrentlySaving
-                                        ? 'opacity-50 cursor-not-allowed bg-slate-100'
-                                        : ''
-                                    }`}
+                                    className="w-full text-center text-sm px-2 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-red-400 focus:border-red-400 bg-white hover:bg-slate-50 text-slate-800 transition-all duration-200"
                                     style={{
                                       fontSize: '12px',
                                       minHeight: '32px',
@@ -2570,8 +2583,53 @@ const CcrDataEntryPage: React.FC<{ t: any }> = ({ t }) => {
                                         : value
                                     }
                                     onChange={(e) => {
+                                      // Update local state immediately for responsive UI
                                       if (param.data_type === ParameterDataType.NUMBER) {
                                         const parsed = parseInputValue(e.target.value);
+                                        setDailyParameterData((prev) => {
+                                          const idx = prev.findIndex((p) => p.parameter_id === param.id);
+                                          if (idx === -1) return prev;
+                                          const paramData = prev[idx];
+                                          const newHourlyValues = { ...paramData.hourly_values };
+                                          const valueToSet = parsed !== null ? parsed.toString() : '';
+                                          if (valueToSet === '' || valueToSet === null) {
+                                            delete newHourlyValues[hour];
+                                          } else {
+                                            newHourlyValues[hour] = valueToSet;
+                                          }
+                                          const updatedParam = { ...paramData, hourly_values: newHourlyValues };
+                                          const newArr = [...prev];
+                                          newArr[idx] = updatedParam;
+                                          return newArr;
+                                        });
+                                      } else {
+                                        setDailyParameterData((prev) => {
+                                          const idx = prev.findIndex((p) => p.parameter_id === param.id);
+                                          if (idx === -1) return prev;
+                                          const paramData = prev[idx];
+                                          const newHourlyValues = { ...paramData.hourly_values };
+                                          if (e.target.value === '' || e.target.value === null) {
+                                            delete newHourlyValues[hour];
+                                          } else {
+                                            newHourlyValues[hour] = e.target.value;
+                                          }
+                                          const updatedParam = { ...paramData, hourly_values: newHourlyValues };
+                                          const newArr = [...prev];
+                                          newArr[idx] = updatedParam;
+                                          return newArr;
+                                        });
+                                      }
+                                    }}
+                                    onBlur={(e) => {
+                                      // Reformat numerical values and save on blur
+                                      if (param.data_type === ParameterDataType.NUMBER) {
+                                        const parsed = parseInputValue(e.target.value);
+                                        if (parsed !== null) {
+                                          e.target.value = formatInputValue(
+                                            parsed,
+                                            getPrecisionForUnit(param.unit)
+                                          );
+                                        }
                                         handleParameterDataChange(
                                           param.id,
                                           hour,
@@ -2581,27 +2639,10 @@ const CcrDataEntryPage: React.FC<{ t: any }> = ({ t }) => {
                                         handleParameterDataChange(param.id, hour, e.target.value);
                                       }
                                     }}
-                                    onBlur={(e) => {
-                                      // Reformat numerical values on blur
-                                      if (param.data_type === ParameterDataType.NUMBER) {
-                                        const parsed = parseInputValue(e.target.value);
-                                        if (parsed !== null) {
-                                          e.target.value = formatInputValue(
-                                            parsed,
-                                            getPrecisionForUnit(param.unit)
-                                          );
-                                        }
-                                      }
-                                    }}
                                     onKeyDown={(e) =>
                                       handleKeyDown(e, 'parameter', hour - 1, paramIndex)
                                     }
-                                    disabled={isCurrentlySaving}
-                                    className={`w-full text-center text-sm px-2 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-red-400 focus:border-red-400 bg-white hover:bg-slate-50 text-slate-800 transition-all duration-200 ${
-                                      isCurrentlySaving
-                                        ? 'opacity-50 cursor-not-allowed bg-slate-100'
-                                        : ''
-                                    }`}
+                                    className="w-full text-center text-sm px-2 py-2 border border-slate-300 rounded focus:ring-2 focus:ring-red-400 focus:border-red-400 bg-white hover:bg-slate-50 text-slate-800 transition-all duration-200"
                                     style={{
                                       fontSize: '12px',
                                       minHeight: '32px',
@@ -2615,11 +2656,6 @@ const CcrDataEntryPage: React.FC<{ t: any }> = ({ t }) => {
                                         : 'Enter text'
                                     }
                                   />
-                                )}
-                                {isCurrentlySaving && (
-                                  <div className="absolute inset-0 flex items-center justify-center bg-white bg-opacity-75 rounded">
-                                    <div className="w-4 h-4 border-2 border-red-500 border-t-transparent rounded-full animate-spin"></div>
-                                  </div>
                                 )}
                               </div>
                             </td>
